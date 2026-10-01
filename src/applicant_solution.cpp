@@ -13,7 +13,6 @@ void AntWorld::forage()
 {
     static AntWorld *lastWorld = nullptr;
     static MapTemplate scannedMap;
-    static bool printedStuckAnt = false;
     const bool allowRelays = true;
 
     // Remember which ants have no food or pheromone task this step.
@@ -30,7 +29,6 @@ void AntWorld::forage()
         );
 
         lastWorld = this;
-        printedStuckAnt = false;
     }
 
     // First pass: deal with food and pheromones before assigning exploration.
@@ -72,7 +70,7 @@ void AntWorld::forage()
                 }
             }
         }
-        
+
         // Consider every cell remembered as holding food, not only what this ant sees.
         bool deliveryFound = false;
         Coord bestDeliveryFood;
@@ -189,134 +187,10 @@ void AntWorld::forage()
             continue;
         }
 
-        // No higher-priority food job: check for another ant's pheromone.
-        bool assignedPheromone = false;
-
-        for (int ownerIndex = 0;
-             ownerIndex < static_cast<int>(this->ants.size());
-             ownerIndex++)
-        {
-            Ant &owner = this->ants[ownerIndex];
-
-            if (owner.pheromoneDropped == false)
-            {
-                continue;
-            }
-
-            int bestResponderIndex = -1;
-            int bestPheromoneCost = 0;
-
-            for (int responderIndex = 0;
-                 responderIndex < static_cast<int>(this->ants.size());
-                 responderIndex++)
-            {
-                Ant &possibleResponder =
-                    this->ants[responderIndex];
-
-                if (responderIndex == ownerIndex ||
-                    possibleResponder.carryingFood == true ||
-                    possibleResponder.energy <= 0)
-                {
-                    continue;
-                }
-
-                // A nearly exhausted marker owner must not abandon its own marker.
-                if (possibleResponder.pheromoneDropped == true &&
-                    possibleResponder.energy <= 1)
-                {
-                    continue;
-                }
-
-                // Visible food takes priority over responding to a pheromone.
-                if (possibleResponder.foodScan(this->foodMap).empty() == false)
-                {
-                    continue;
-                }
-
-                std::vector<Coord> pathToPheromone =
-                    shortestPath(
-                        this->terrainMap,
-                        possibleResponder.position,
-                        owner.pheromonePosition
-                    );
-
-                if (pathToPheromone.empty() == true)
-                {
-                    continue;
-                }
-
-                int pheromoneCost =
-                    calculatePathCost(
-                        this->terrainMap,
-                        pathToPheromone
-                    );
-
-                if (possibleResponder.energy >= pheromoneCost &&
-                    (bestResponderIndex == -1 ||
-                     pheromoneCost < bestPheromoneCost))
-                {
-                    bestResponderIndex = responderIndex;
-                    bestPheromoneCost = pheromoneCost;
-                }
-            }
-
-            if (bestResponderIndex == antIndex)
-            {
-                assignedPheromone = true;
-                Coord pheromoneTarget =
-                    owner.pheromonePosition;
-
-                ant.move(
-                    this->terrainMap,
-                    pheromoneTarget,
-                    this->foodMap
-                );
-
-                if (ant.position == pheromoneTarget)
-                {
-                    owner.erasePheromone(this->pheromoneMap);
-                }
-
-                break;
-            }
-        }
-
-        // The responder scans its destination on the next simulation step.
-        if (assignedPheromone == true)
-        {
-            continue;
-        }
-
         if (ant.energy > 0)
         {
             freeAntIndices.push_back(antIndex);
         }
-    }
-
-    // Print the low-energy diagnostic only once, not every simulation step.
-    if (printedStuckAnt == false &&
-        this->ants.size() == 1 &&
-        this->ants[0].energy <= 2)
-    {
-        Ant &ant = this->ants[0];
-
-        std::vector<Coord> nearbyFood =
-            ant.foodScan(this->foodMap);
-
-        std::cout << "\nSTUCK ANT DIAGNOSTIC\n";
-        std::cout << "Energy: " << ant.energy << '\n';
-        std::cout << "Carrying food: "
-                  << ant.carryingFood << '\n';
-        std::cout << "Owns pheromone: "
-                  << ant.pheromoneDropped << '\n';
-        std::cout << "Visible food count: "
-                  << nearbyFood.size() << '\n';
-        std::cout << "Free ants: "
-                  << freeAntIndices.size() << '\n';
-        std::cout << "Score so far: "
-                  << this->score << '\n';
-
-        printedStuckAnt = true;
     }
 
     // Lower-energy free ants choose cheap exploration targets first.
