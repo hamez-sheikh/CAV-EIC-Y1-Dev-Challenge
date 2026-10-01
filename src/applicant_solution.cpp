@@ -3,7 +3,7 @@
 //
 
 #include "../include/antworld.h"
-
+#include <algorithm>
 
 /** @brief this is where you as the applicant will make use of the above functions to develop your solution.
  * here are some existing examples of how calling these functions works to help get you started!
@@ -12,6 +12,7 @@ void AntWorld::forage()
 {
     static bool initialized = false;
     static MapTemplate scannedMap;
+    std::vector<int> freeAntIndices;
 
     // one time setup
     if (!initialized)
@@ -184,8 +185,79 @@ void AntWorld::forage()
                 continue;
             }
         }
-        //find nearby unscanned territory
+        if (assignedPheromone == true)
+        {
+            continue;
+        }
+        // keep track of ants that are free to explore
+        if (ant.energy > 0)
+        {
+            freeAntIndices.push_back(antIndex);
+        }
     }
+    // sort the ants based on most energy to least
+    std::sort(freeAntIndices.begin(), freeAntIndices.end(), [this](int firstIndex, int secondIndex)
+    {
+        return this->ants[firstIndex].energy < this->ants[secondIndex].energy;
+    }
+    );
+
+    std::vector<Coord> claimedExplorationTargets;
+
+    for (int freeIndex : freeAntIndices)
+    {
+        Ant &exploringAnt = this->ants[freeIndex];
+        bool targetFound = false;
+        Coord bestTarget;
+        int bestTargetCost = 0;
+
+        for (int row = 0; row < static_cast<int>(scannedMap.size()); row ++)
+        {
+          for (int column = 0; column <static_cast<int>(scannedMap[0].size()); column ++)
+          {
+              if (scannedMap[row][column] == 0)
+              {
+                  bool tooCloseToClaimedTarget = false;
+
+                  for (Coord claimedTarget : claimedExplorationTargets)
+                  {
+                      int targetSpacing = std::abs(row - claimedTarget.first) + std::abs(column - claimedTarget.second);
+
+                      if (targetSpacing < 5)
+                      {
+                          tooCloseToClaimedTarget = true;
+                          break;
+                      }
+                  }
+                  if (tooCloseToClaimedTarget == true)
+                  {
+                      continue;
+                  }
+                  Coord candidateTarget;
+                  candidateTarget.first = row;
+                  candidateTarget.second = column;
+                  // helps each ant select teh cheapest unscanned area that isnt too close to another ants assigned exploration area
+                  std::vector<Coord> pathToTarget = shortestPath(this->terrainMap, exploringAnt.position, candidateTarget);
+
+                  int targetCost = calculatePathCost(this->terrainMap, pathToTarget);
+
+                  if (targetFound == false || targetCost < bestTargetCost)
+                  {
+                      bestTarget = candidateTarget;
+                      bestTargetCost = targetCost;
+                      targetFound = true;
+                  }
+              }
+          }
+        }
+        if (targetFound == true)
+        {
+            claimedExplorationTargets.push_back(bestTarget);
+
+            exploringAnt.move(this->terrainMap, bestTarget, this-> foodMap);
+        }
+    }
+
 }
 
     // std::vector<Coord> visibleFood = this->ants[0].foodScan(this->foodMap);
