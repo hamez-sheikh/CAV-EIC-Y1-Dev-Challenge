@@ -14,6 +14,7 @@ void AntWorld::forage()
     static AntWorld *lastWorld = nullptr;
     static MapTemplate scannedMap;
     static bool printedStuckAnt = false;
+    const bool allowRelays = true;
 
     // Remember which ants have no food or pheromone task this step.
     std::vector<int> freeAntIndices;
@@ -46,18 +47,6 @@ void AntWorld::forage()
             continue;
         }
 
-        // A marker whose owner is the last ant cannot be answered by anyone.
-        if (this->ants.size() == 1 && ant.pheromoneDropped == true)
-        {
-            ant.erasePheromone(this->pheromoneMap);
-        }
-
-        // Keep an almost-exhausted pheromone owner alive until its marker is resolved.
-        if (ant.pheromoneDropped == true && ant.energy <= 1)
-        {
-            continue;
-        }
-
         // Scan before considering a pheromone assignment.
         std::vector<Coord> visibleFood = ant.foodScan(this->foodMap);
 
@@ -77,27 +66,53 @@ void AntWorld::forage()
                 {
                     scannedMap[row][column] = 1;
                 }
+                for (Coord food : visibleFood)
+                {
+                    scannedMap[food.first][food.second] = 2;
+                }
             }
         }
+        
+        // Consider every cell remembered as holding food, not only what this ant sees.
+        bool deliveryFound = false;
+        Coord bestDeliveryFood;
+        int bestDeliveryCost = 0;
 
-        // Compare visible food using the full trip: ant -> food -> home.
-        if (visibleFood.empty() == false)
+        bool relayFound = false;
+        Coord bestRelayFood;
+        int bestRelayCost = 0;
+
+        for (int row = 0;
+             row < static_cast<int>(scannedMap.size());
+             row++)
         {
-            bool foodChosen = false;
-            Coord bestFood;
-            int bestTotalCost = 0;
-            int bestCostToFood = 0;
-            std::vector<Coord> bestPathFoodToHome;
-
-            for (Coord food : visibleFood)
+            for (int column = 0;
+                 column < static_cast<int>(scannedMap[0].size());
+                 column++)
             {
+                if (scannedMap[row][column] != 2)
+                {
+                    continue;
+                }
+
+                // Every edge costs at least 1, so path cost >= Manhattan distance.
+                int distanceToFood =
+                    std::abs(row - ant.position.first) +
+                    std::abs(column - ant.position.second);
+
+                if (distanceToFood > ant.energy)
+                {
+                    continue;
+                }
+
+                Coord food = Coord(row, column);
+
                 std::vector<Coord> pathToFood =
                     shortestPath(this->terrainMap, ant.position, food);
 
                 std::vector<Coord> pathFoodToHome =
                     shortestPath(this->terrainMap, food, ant.homeCoord);
 
-                // Ignore a destination if either route does not exist.
                 if (pathToFood.empty() == true ||
                     pathFoodToHome.empty() == true)
                 {
@@ -110,89 +125,68 @@ void AntWorld::forage()
                 int costFoodToHome =
                     calculatePathCost(this->terrainMap, pathFoodToHome);
 
-                int totalDeliveryCost = costToFood + costFoodToHome;
-
-                if (foodChosen == false ||
-                    totalDeliveryCost < bestTotalCost)
+                if (ant.energy >= costToFood + costFoodToHome)
                 {
-                    bestFood = food;
-                    bestTotalCost = totalDeliveryCost;
-                    bestCostToFood = costToFood;
-                    bestPathFoodToHome = pathFoodToHome;
-                    foodChosen = true;
+                    int totalCost = costToFood + costFoodToHome;
+
+                    if (deliveryFound == false ||
+                        totalCost < bestDeliveryCost)
+                    {
+                        bestDeliveryFood = food;
+                        bestDeliveryCost = totalCost;
+                        deliveryFound = true;
+                    }
                 }
-            }
-
-            if (foodChosen == true)
-            {
-                // Complete delivery if the ant can afford both parts of the trip.
-                if (ant.energy >= bestTotalCost)
+                else if (allowRelays == true &&
+                         ant.energy >= costToFood &&
+                         pathFoodToHome.size() >= 2)
                 {
-                    ant.move(
-                        this->terrainMap,
-                        bestFood,
-                        this->foodMap
-                    );
-
-                    ant.returnHome(
-                        this->terrainMap,
-                        this->foodMap
-                    );
-
-                    continue;
-                }
-
-                // Otherwise, relay only if food can move at least one step home.
-                if (ant.energy >= bestCostToFood &&
-                    bestPathFoodToHome.size() >= 2)
-                {
-                    int nextRow = bestPathFoodToHome[1].first;
-                    int nextColumn = bestPathFoodToHome[1].second;
-
-                    int foodRow = bestFood.first;
-                    int foodColumn = bestFood.second;
+                    int nextRow = pathFoodToHome[1].first;
+                    int nextColumn = pathFoodToHome[1].second;
 
                     int firstMoveHomeCost = 1 + std::abs(
                         this->terrainMap[nextRow][nextColumn] -
-                        this->terrainMap[foodRow][foodColumn]
+                        this->terrainMap[row][column]
                     );
 
-                    int energyAfterReachingFood =
-                        ant.energy - bestCostToFood;
-
-                    if (energyAfterReachingFood >= firstMoveHomeCost)
+                    if (ant.energy - costToFood >= firstMoveHomeCost &&
+                        (relayFound == false ||
+                         costToFood < bestRelayCost))
                     {
-                        ant.move(
-                            this->terrainMap,
-                            bestFood,
-                            this->foodMap
-                        );
-
-                        ant.returnHome(
-                            this->terrainMap,
-                            this->foodMap
-                        );
-
-                        continue;
+                        bestRelayFood = food;
+                        bestRelayCost = costToFood;
+                        relayFound = true;
                     }
                 }
-
-                // Food is visible but cannot be usefully moved by this ant.
-                if (ant.pheromoneDropped == false &&
-                    this->ants.size() > 1 &&
-                    this->pheromoneMap[ant.position.first]
-                                      [ant.position.second] == 0)
-                {
-                    ant.dropPheromone(this->pheromoneMap);
-                }
-
-                // With other ants alive, leave this food for a potential responder.
-                // A lone ant can still try exploring rather than waiting forever.
-                if (this->ants.size() > 1)
-                {
-                    continue;
-                }
             }
+        }
+
+        // A full delivery always beats a relay, because only a delivery scores.
+        if (deliveryFound == true)
+        {
+            scannedMap[bestDeliveryFood.first][bestDeliveryFood.second] = 1;
+
+            ant.move(this->terrainMap, bestDeliveryFood, this->foodMap);
+            ant.returnHome(this->terrainMap, this->foodMap);
+            continue;
+        }
+
+        if (relayFound == true)
+        {
+            scannedMap[bestRelayFood.first][bestRelayFood.second] = 1;
+
+            ant.move(this->terrainMap, bestRelayFood, this->foodMap);
+            ant.returnHome(this->terrainMap, this->foodMap);
+
+            // Out of energy while carrying: updateWorld will drop the food right here.
+            if (ant.carryingFood == true &&
+                ant.energy == 0 &&
+                ant.position != ant.homeCoord)
+            {
+                scannedMap[ant.position.first][ant.position.second] = 2;
+            }
+
+            continue;
         }
 
         // No higher-priority food job: check for another ant's pheromone.
