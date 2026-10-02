@@ -6,14 +6,12 @@
 #include "../include/antworld.h"
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <vector>
 
 void AntWorld::forage()
 {
     static AntWorld *lastWorld = nullptr;
     static MapTemplate scannedMap;
-    const bool allowRelays = true;
 
     // Remember which ants have no food or pheromone task this step.
     std::vector<int> freeAntIndices;
@@ -76,18 +74,14 @@ void AntWorld::forage()
         Coord bestDeliveryFood;
         int bestDeliveryCost = 0;
 
-        bool relayFound = false;
-        Coord bestRelayFood;
-        int bestRelayCost = 0;
+
 
         for (int row = 0;
              row < static_cast<int>(scannedMap.size());
-             row++)
-        {
+             row++) {
             for (int column = 0;
                  column < static_cast<int>(scannedMap[0].size());
-                 column++)
-            {
+                 column++) {
                 if (scannedMap[row][column] != 2)
                 {
                     continue;
@@ -135,31 +129,8 @@ void AntWorld::forage()
                         deliveryFound = true;
                     }
                 }
-                else if (allowRelays == true &&
-                         ant.energy >= costToFood &&
-                         pathFoodToHome.size() >= 2)
-                {
-                    int nextRow = pathFoodToHome[1].first;
-                    int nextColumn = pathFoodToHome[1].second;
-
-                    int firstMoveHomeCost = 1 + std::abs(
-                        this->terrainMap[nextRow][nextColumn] -
-                        this->terrainMap[row][column]
-                    );
-
-                    if (ant.energy - costToFood >= firstMoveHomeCost &&
-                        (relayFound == false ||
-                         costToFood < bestRelayCost))
-                    {
-                        bestRelayFood = food;
-                        bestRelayCost = costToFood;
-                        relayFound = true;
-                    }
-                }
-            }
+                 }
         }
-
-        // A full delivery always beats a relay, because only a delivery scores.
         if (deliveryFound == true)
         {
             scannedMap[bestDeliveryFood.first][bestDeliveryFood.second] = 1;
@@ -169,30 +140,11 @@ void AntWorld::forage()
             continue;
         }
 
-        if (relayFound == true)
-        {
-            scannedMap[bestRelayFood.first][bestRelayFood.second] = 1;
-
-            ant.move(this->terrainMap, bestRelayFood, this->foodMap);
-            ant.returnHome(this->terrainMap, this->foodMap);
-
-            // Out of energy while carrying: updateWorld will drop the food right here.
-            if (ant.carryingFood == true &&
-                ant.energy == 0 &&
-                ant.position != ant.homeCoord)
-            {
-                scannedMap[ant.position.first][ant.position.second] = 2;
-            }
-
-            continue;
-        }
-
         if (ant.energy > 0)
         {
             freeAntIndices.push_back(antIndex);
         }
     }
-
     // Lower-energy free ants choose cheap exploration targets first.
     std::sort(
         freeAntIndices.begin(),
