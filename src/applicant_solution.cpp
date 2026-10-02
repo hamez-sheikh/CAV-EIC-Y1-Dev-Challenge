@@ -13,12 +13,12 @@ void AntWorld::forage()
     static AntWorld *lastWorld = nullptr;
     static MapTemplate scannedMap;
 
-    // no affordable food job
+    // Ants with no affordable delivery this step. They will explore instead
     std::vector<int> freeAntIndices;
 
     if (lastWorld != this ||
         scannedMap.size() != this->foodMap.size() ||
-        (scannedMap.empty() == false &&
+        // (scannedMap.empty() == false &&
          scannedMap[0].size() != this->foodMap[0].size()))
     {
         scannedMap = MapTemplate(
@@ -29,7 +29,7 @@ void AntWorld::forage()
         lastWorld = this;
     }
 
-    // First pass: carry food home otherwise deliver the cheapest remembered food
+    // First pass: carry food home, otherwise deliver the cheapest remembered food.
     for (int antIndex = 0;
          antIndex < static_cast<int>(this->ants.size());
          antIndex++)
@@ -43,7 +43,7 @@ void AntWorld::forage()
             continue;
         }
 
-// Scan, then update memory the map
+        // Scan, then update the memory map.
         std::vector<Coord> visibleFood = ant.foodScan(this->foodMap);
 
         // Record only the cells covered by this ant's food sensor.
@@ -64,6 +64,8 @@ void AntWorld::forage()
                 }
             }
         }
+
+        // Re-mark every cell where this ant's sensor actually saw food.
         for (Coord food : visibleFood)
         {
             scannedMap[food.first][food.second] = 2;
@@ -72,8 +74,6 @@ void AntWorld::forage()
         bool deliveryFound = false;
         Coord bestDeliveryFood;
         int bestDeliveryCost = 0;
-
-
 
         for (int row = 0;
              row < static_cast<int>(scannedMap.size());
@@ -128,7 +128,7 @@ void AntWorld::forage()
                         deliveryFound = true;
                     }
                 }
-                 }
+            }
         }
 
         if (deliveryFound == true)
@@ -145,6 +145,7 @@ void AntWorld::forage()
             freeAntIndices.push_back(antIndex);
         }
     }
+    
     // Lower-energy free ants choose cheap exploration targets first.
     std::sort(
         freeAntIndices.begin(),
