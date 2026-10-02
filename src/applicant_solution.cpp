@@ -13,7 +13,7 @@ void AntWorld::forage()
     static AntWorld *lastWorld = nullptr;
     static MapTemplate scannedMap;
 
-    // Remember which ants have no food or pheromone task this step.
+    // no affordable food job
     std::vector<int> freeAntIndices;
 
     if (lastWorld != this ||
@@ -29,7 +29,7 @@ void AntWorld::forage()
         lastWorld = this;
     }
 
-    // First pass: deal with food and pheromones before assigning exploration.
+    // First pass: carry food home otherwise deliver the cheapest remembered food
     for (int antIndex = 0;
          antIndex < static_cast<int>(this->ants.size());
          antIndex++)
@@ -43,7 +43,7 @@ void AntWorld::forage()
             continue;
         }
 
-        // Scan before considering a pheromone assignment.
+// Scan, then update memory the map
         std::vector<Coord> visibleFood = ant.foodScan(this->foodMap);
 
         // Record only the cells covered by this ant's food sensor.
@@ -62,13 +62,12 @@ void AntWorld::forage()
                 {
                     scannedMap[row][column] = 1;
                 }
-                for (Coord food : visibleFood)
-                {
-                    scannedMap[food.first][food.second] = 2;
-                }
             }
         }
-
+        for (Coord food : visibleFood)
+        {
+            scannedMap[food.first][food.second] = 2;
+        }
         // Consider every cell remembered as holding food, not only what this ant sees.
         bool deliveryFound = false;
         Coord bestDeliveryFood;
@@ -131,6 +130,7 @@ void AntWorld::forage()
                 }
                  }
         }
+
         if (deliveryFound == true)
         {
             scannedMap[bestDeliveryFood.first][bestDeliveryFood.second] = 1;
